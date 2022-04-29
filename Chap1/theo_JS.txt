@@ -1,0 +1,161 @@
+/**
+ * Convertit une string au format ISO 8601 (avec heures UTC) en objet Date
+ *
+ * @param {string} str La date au format ISO 8601 avec heures UTC
+ * @return {Date} en "local timezone"
+ */
+function strToDate(str) {
+  return new Date(Date.UTC(
+    str.substr(0, 4),
+    str.substr(4, 2) - 1,
+    str.substr(6, 2),
+    str.substr(9, 2),
+    str.substr(11, 2),
+    str.substr(13, 2)
+  ));
+}
+/**
+ * Convertit un objet Date en string au format FR_CH simplifié
+ *
+ * @param {Date}
+ * @return {string} exemple de retour: "Lun 02.11"
+ */
+function dateToFrCh(date) {
+  let mapDay = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+  let day = date.getDate();
+  let dayName = mapDay[date.getDay()];
+  let month = date.getMonth() + 1;
+  let year = date.getFullYear();
+  if (month < 10) month = '0' + month;
+  if (day < 10) day = '0' + day;
+  return `${dayName} ${day}.${month}`;
+}
+/**
+ * Convertit un objet Date au format heures:minutes en "local timezone"
+ *
+ * @param {Date}
+ * @return {string} exemple de retour: "15:32"
+ */
+function dateToHours(date) {
+  let hours = date.getHours();
+  let minutes = date.getMinutes();
+  if (hours < 10) hours = '0' + hours;
+  if (minutes < 10) minutes = '0' + minutes;
+  return `${hours}:${minutes}`;
+}
+
+function compareEvents(event1, event2) {
+  let date1 = event1.querySelector('DTSTART').textContent;
+  let date2 = event2.querySelector('DTSTART').textContent;
+  return date1.localeCompare(date2);
+}
+
+console.log(new Date());
+
+const templateCourse = document.querySelector('.template-course').cloneNode(true);
+templateCourse.classList.remove('template');
+
+function domForEach(selector, callback) {
+  document.querySelectorAll(selector).forEach(callback);
+}
+
+function domOn(selector, event, callback) {
+  domForEach(selector, ele => ele.addEventListener(event, callback));
+}
+
+// Gestion des événements
+// Gérez les clicks sur les boutons possédant la classe css btn-schedule. 
+// Lors d'un click, vous devez récupérer l'attribut data-class-id contenant l’identifiant de la classe. 
+// Utilisez la propriété dataset pour le faire. 
+// Vous devez aussi ajouter la classe css selected au bouton cliqué (et la supprimer des autres boutons).
+
+const boutons = document.querySelectorAll('.btn-schedule');
+let classe;
+let URLcalendrier;
+
+for (let bouton of boutons) {
+  bouton.addEventListener('click', evt => {
+    classe = bouton.dataset.classId;
+    // console.log(classe);
+    if (!bouton.classList.contains('selected')) {
+      for (let bouton of boutons) {
+        if (bouton.classList.contains('selected')) {
+          bouton.classList.remove('selected');
+        }
+      }
+      bouton.classList.add('selected');
+    }
+    // On prépare déjà la suite :
+    URLcalendrier = 'https://chabloz.eu/files/horaires/' + classe + '.xml';
+    // Petit contrôle dans la console:
+    console.log(URLcalendrier);
+
+    fetch(URLcalendrier)
+      .then(reponse => reponse.text())
+      .then(txt => {
+        const parser = new DOMParser();
+        const xmlDom = parser.parseFromString(txt, 'text/xml');
+        const courses = [...xmlDom.querySelectorAll('VEVENT')];
+        document.querySelector('#schedule').replaceChildren();
+
+        // Regarde le bouton checkbox ajouté dans la partie html.
+        let boutonChecked = document.querySelector('#oldCourses').checked;
+        if (!boutonChecked) {
+          // "recharge" la page.
+          document.querySelector('.selected').dispatchEvent(new Event('click'));
+          // On va comparé la date actuelle à la date des cours.
+          const futursCourses = courses.filter(course => strToDate(course.querySelector('DTEND').textContent) >= new Date());
+          futursCourses.sort(compareEvents);
+          futursCourses.forEach(course => {
+            let nom = course.querySelector('SUMMARY').textContent
+            // console.log(nom);
+            let salle = course.querySelector('LOCATION').textContent
+            // console.log(salle);
+            let heureDebut = strToDate(course.querySelector('DTSTART').textContent)
+            let heureFin = strToDate(course.querySelector('DTEND').textContent)
+            // console.log(heureDebut);
+            // console.log(heureFin);
+
+            const template = templateCourse.cloneNode(true);
+            document.querySelector('#schedule').appendChild(template);
+            template.querySelector('.room').textContent = salle;
+            template.querySelector('.course').textContent = nom;
+            template.querySelector('.date').textContent = dateToFrCh(heureDebut);
+            template.querySelector('.hours').textContent = dateToHours(heureDebut) + ' ' + dateToHours(heureFin);
+          })
+        } else {
+          // "recharge" la page.
+          document.querySelector('.selected').dispatchEvent(new Event('click'));
+          // On affiche simplement tous les cours.
+          courses.sort(compareEvents);
+          courses.forEach(course => {
+            let nom = course.querySelector('SUMMARY').textContent
+            // console.log(nom);
+            let salle = course.querySelector('LOCATION').textContent
+            // console.log(salle);
+            let heureDebut = strToDate(course.querySelector('DTSTART').textContent)
+            let heureFin = strToDate(course.querySelector('DTEND').textContent)
+            // console.log(heureDebut);
+            // console.log(heureFin);
+
+            const template = templateCourse.cloneNode(true);
+            document.querySelector('#schedule').appendChild(template);
+            template.querySelector('.room').textContent = salle;
+            template.querySelector('.course').textContent = nom;
+            template.querySelector('.date').textContent = dateToFrCh(heureDebut);
+            template.querySelector('.hours').textContent = dateToHours(heureDebut) + ' ' + dateToHours(heureFin);
+          })
+        }
+        loadXml(URLcalendrier);
+      });
+  })
+}
+
+async function loadXml(url) {
+  const response = await fetch(url);
+  const xmlText = await response.text();
+  const parser = new DOMParser();
+  return parser.parseFromString(xmlText, 'text/xml');
+}
+
+document.querySelector('.selected').dispatchEvent(new Event('click'));
